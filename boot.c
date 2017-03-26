@@ -38,7 +38,7 @@ static struct gdtdesc_t gdtdesc = {
 	.gdtaddr = (unsigned long) &gdtarr
 };
 
-static short sz_stage2 = ((STAGE2_SIZE+511)>>9);
+static unsigned short sz_stage2 = ((STAGE2_SIZE+511)>>9);
 
 // static unsigned short sz_stage2;
 
@@ -55,17 +55,19 @@ void __NOINLINE __REGPARM print(const char *s) {
 }
 
 void __NOINLINE __REGPARM lba_load_sector(unsigned char boot_drive, struct lba_reader_packet * lbapkt) {
-	while (sz_stage2--) {
-		lbapkt->bootloader_load_address+=32<<16;
+	short drive=boot_drive;
+	while ( sz_stage2--) {
+		lbapkt->bootloader_load_address+=1<<21;
 		lbapkt->start_sector++;
 		asm volatile goto(
 			"int	$0x13\n"
-			"jc		%l[failed]"
+			"jc	%l[failed]"
 			: 
-			: "a"(0x4200), "d"(boot_drive), "S"(lbapkt)
+			: "a"(0x4200), "d"(drive), "S"(lbapkt)
 			:"cc"
 			: failed);
 	}
+	asm volatile("Loop2: \n jmp Loop2");
 	return;
 failed:
 	print("Boot failed");
@@ -81,17 +83,17 @@ void __NORETURN __attribute__((section("__start"))) main(){
 		"movb %%dl, %b0\n"
 		"mov  %%esi, %1\n"
 		: "=b"(bios_drive), "=m"(lbapkt) :: "dl","si"); /* MBR will pass packet address by si */
-	print("Hello, Bootloader!\r\n");
+	//print("Hello, Bootloader!\r\n");
 	lba_load_sector(bios_drive, lbapkt);
 	/* goto protected mode */
 	asm volatile(
 		"cli\n"
-		"lgdtl	%0\n"
+		"ADDR32	lgdtl	%0\n"
 		"movl	%%cr0, %%eax\n"
-		"or		$1, %%al\n"
+		"orl	$1, %%eax\n"
 		"movl	%%eax, %%cr0\n"
-		"jmpl	$0x8, $0x8200"
+		"DATA32	ljmp	$0x08,$0x8200"
 		:
-		: "m"(gdtdesc));
-	goto *((void *) 0x8200); // jmp to next stage
+		: "m"(gdtdesc):"eax", "edx");
+	goto *((void*) 0x8200 );
 }
