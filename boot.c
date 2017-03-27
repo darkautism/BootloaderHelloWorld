@@ -1,4 +1,3 @@
-
 #include <stage2_size.h>
 asm(".code16gcc\n");
 
@@ -38,7 +37,7 @@ static struct gdtdesc_t gdtdesc = {
 	.gdtaddr = (unsigned long) &gdtarr
 };
 
-static unsigned short sz_stage2 = ((STAGE2_SIZE+511)>>9);
+static unsigned short volatile sz_stage2 = ((STAGE2_SIZE+511)>>9)+1;
 
 // static unsigned short sz_stage2;
 
@@ -54,20 +53,26 @@ void __NOINLINE __REGPARM print(const char *s) {
 	}
 }
 
-void __NOINLINE __REGPARM lba_load_sector(unsigned char boot_drive, struct lba_reader_packet * lbapkt) {
-	short drive=boot_drive;
-	while ( sz_stage2--) {
-		lbapkt->bootloader_load_address+=1<<21;
-		lbapkt->start_sector++;
-		asm volatile goto(
-			"int	$0x13\n"
-			"jc	%l[failed]"
-			: 
-			: "a"(0x4200), "d"(drive), "S"(lbapkt)
-			:"cc"
-			: failed);
-	}
-	asm volatile("Loop2: \n jmp Loop2");
+void __NOINLINE __REGPARM lba_load_sector(unsigned short boot_drive, struct lba_reader_packet * lbapkt) {
+	asm volatile goto(
+		"movw	$0x7f,%%bx\n"
+		"lba_load_loop:\n"
+		"cmp	%%cx, %%bx\n"
+		"jl	1f\n"
+		"movw	%%cx, %%bx\n"
+		"1: movw	%%bx, 2(%%si)\n"
+		"movw	$0x4200,%%ax\n"
+		"int	$0x13\n"
+		"jc	%l[failed]\n"
+		"addw   %%bx, 8(%%si)\n"
+		"salw   $5, %%bx\n"
+		"addw   %%bx, 6(%%si)\n"
+		"subw	2(%%si), %%cx\n"
+		"jnz	lba_load_loop\n"
+		:
+		: "d"(boot_drive), "S"(lbapkt), "c"(sz_stage2)
+		: 
+		: failed);
 	return;
 failed:
 	print("Boot failed");
@@ -76,14 +81,13 @@ failed:
 
 /* and for everything else you can use C! Be it traversing the filesystem, or verifying the kernel image etc.*/
 void __NORETURN __attribute__((section("__start"))) main(){
-
- 	unsigned char bios_drive = 0xff;
+ 	unsigned short bios_drive;
  	struct lba_reader_packet *lbapkt=0;
 	asm volatile(
 		"movb %%dl, %b0\n"
 		"mov  %%esi, %1\n"
 		: "=b"(bios_drive), "=m"(lbapkt) :: "dl","si"); /* MBR will pass packet address by si */
-	//print("Hello, Bootloader!\r\n");
+	print("Hello, Bootloader!\r\n");
 	lba_load_sector(bios_drive, lbapkt);
 	/* goto protected mode */
 	asm volatile(
@@ -95,5 +99,5 @@ void __NORETURN __attribute__((section("__start"))) main(){
 		"DATA32	ljmp	$0x08,$0x8200"
 		:
 		: "m"(gdtdesc):"eax", "edx");
-	goto *((void*) 0x8200 );
+	goto *((void*)0x8200);
 }

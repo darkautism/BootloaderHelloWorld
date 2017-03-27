@@ -35,26 +35,24 @@ void console_init() {
 }
 
 void console_putchar(char c) {
-	asm volatile("loop1: jmp loop1"::"a"(c));
-	console_buffer[console_cursor*2] = c;
-	console_buffer[console_cursor*2+1] = 0x07;
-	console_cursor++;
+ 	switch (c) {
+		case '\r' :
+			console_cursor -= console_cursor%CONSOLE_COL_MAX;
+			break;
+		case '\n' :
+			console_cursor += 80-console_cursor%CONSOLE_COL_MAX;
+			break;
+		default:
+			console_buffer[console_cursor*2] = c;
+			console_buffer[console_cursor*2+1] = 0x07;
+			console_cursor++;
+			break;
+	}
 }
 
 void console_putstr(char * c) {
-	while (*c) {
-		switch (*c) {
-			case '\r' :
-				console_cursor -= console_cursor%CONSOLE_COL_MAX;
-				break;
-			case '\n' :
-				console_cursor += 80-console_cursor%CONSOLE_COL_MAX;
-				break;
-			default:
-				console_putchar(*c);
-		}
-		c++;
-	}
+	while (*c)
+		console_putchar(*c);
 }
 
 int __itoa ( int value, char * str, int base ) {
@@ -70,7 +68,6 @@ int __itoa ( int value, char * str, int base ) {
 }
 
 char *  itoa ( int value, char * str, int base ) {
-	
 	__itoa(value/base, str, base);
 	return str;
 }
@@ -78,7 +75,6 @@ char *  itoa ( int value, char * str, int base ) {
 static int console_printf( const char *format, va_list args ) {
 	int pc=0;
 	char buf_int[13];
-	console_putchar('G');
 	for (; *format != 0; ++format) {
 		if (*format == '%') {
 			++format;
@@ -86,28 +82,17 @@ static int console_printf( const char *format, va_list args ) {
 				pc+=__itoa ( va_arg( args, int ), buf_int, 16 );
 			}
 		} else {
-			console_putchar('P');
 			pc++;
 			console_putchar(*format);
 		}
-		console_putchar('F');
 	}
 	va_end(args);
-	console_putchar('E');
 	return pc;
 }
 
 int printf(const char *format, ...) {
-	asm volatile("loop2: jmp loop2"::"a"(format));
-	console_putchar(*format);
-	while (1);
-	char test[13];
 	va_list args;
 	va_start( args, format );
-	console_putchar('I');
-	itoa ( *format, test, 10 );
-	console_putchar(test[0]);
-	while (1);
 	return console_printf( format, args );
 }
 
@@ -130,8 +115,6 @@ char waitkey() {
 /* and for everything else you can use C! Be it traversing the filesystem, or verifying the kernel image etc.*/
 void __attribute__((noreturn)) main(){
 	console_init();
-	//console_putchar('Y');
-	console_putstr("zz");
 	printf("Hello, Kernel!\n");
 	console_putchar('Y');
 	while (1);

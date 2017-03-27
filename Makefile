@@ -3,7 +3,7 @@ defaults: kernel bootstrip
 	@cat boot.bin main.bin > bootloader.bin
 
 kernel: main.c main.ld
-	@gcc -std=gnu99 ${CFLAGS} -c -Os -ffreestanding -m32 -Wall -I. -o main.o main.c
+	@gcc -std=gnu99 ${CFLAGS} -c -O2 -ffreestanding -m32 -Wall -I. -o main.o main.c
 	@ld -melf_i386 -static -Tmain.ld -nostdlib --nmagic -o main.elf main.o
 	@objcopy -O binary main.elf main.bin
 	
